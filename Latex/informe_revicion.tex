@@ -1,1 +1,315 @@
+% ============================================================================
+%  FORM-TL-05 - Taller de Revision Tecnica Cruzada del Codigo del PFC
+%  Equipo revisor: FUVV  |  PFC revisado: ACC - Soporte Tecnico ISP
+%  Compilacion: pdflatex informe_revision.tex  (x3, sin biber)
+% ============================================================================
+\documentclass[10pt,a4paper]{article}
 
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+% lmodern omitido: no es necesario y evita dependencias extra
+\usepackage[margin=2.1cm]{geometry}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{xltabular}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{tcolorbox}
+\usepackage{xurl}
+\usepackage[hidelinks]{hyperref}
+
+% --- Nomenclatura en espanol sin babel (garantiza compilacion en clon limpio) --
+\renewcommand{\figurename}{Figura}
+\renewcommand{\tablename}{Tabla}
+\renewcommand{\refname}{Referencias}
+\renewcommand{\contentsname}{Indice}
+\renewcommand{\lstlistingname}{Fragmento}
+
+% --------------------------- DATOS EDITABLES --------------------------------
+\newcommand{\repoRevisado}{https://github.com/carlospatroner-boop/PFC-SOPORTE-ISP}
+\newcommand{\repoRevisor}{https://github.com/PENDIENTE/FUVV-revision-tl05}
+\newcommand{\commitCorto}{479b637}
+\newcommand{\commitLargo}{479b6370a640c0d2edfad801e6937e9ede8c3c80}
+\newcommand{\fechaAuditoria}{Martes 11 de agosto de 2026, 21h30 (UTC-5)}
+\newcommand{\cierreSemana}{Viernes 14 de agosto de 2026}
+% ----------------------------------------------------------------------------
+
+\definecolor{codebg}{RGB}{247,247,247}
+\definecolor{coderule}{RGB}{210,210,210}
+\lstset{
+  basicstyle=\ttfamily\scriptsize,
+  backgroundcolor=\color{codebg},
+  frame=single,
+  rulecolor=\color{coderule},
+  breaklines=true,
+  columns=fullflexible,
+  numbers=left,
+  numberstyle=\ttfamily\tiny\color{gray},
+  xleftmargin=2.2em,
+  framexleftmargin=2.0em,
+  captionpos=b,
+  showstringspaces=false
+}
+
+\newcommand{\sev}[1]{\textbf{#1}}
+\DeclareUrlCommand\ruta{\urlstyle{tt}}
+\newcount\cntlineas
+\newcommand{\lineas}[1]{\leavevmode\hfill\par\vspace{3pt}\cntlineas=#1\relax
+  \loop\ifnum\cntlineas>0
+    \noindent\rule{\linewidth}{0.4pt}\par\vspace{9pt}%
+    \advance\cntlineas by -1 \repeat}
+
+\renewcommand{\arraystretch}{1.15}
+\setlength{\parskip}{2pt}
+
+\begin{document}
+
+% ============================== PORTADA =====================================
+\begin{titlepage}
+\centering
+\vspace*{1.2cm}
+{\large UNIVERSIDAD TECNICA ESTATAL DE QUEVEDO}\\[0.25cm]
+{\normalsize Facultad de Ciencias de la Computacion}\\[0.15cm]
+{\normalsize Carrera de Ingenieria de Software}\\[1.6cm]
+
+{\normalsize Aplicaciones Distribuidas (ISR-701) --- Unidad 5}\\[0.4cm]
+{\large\bfseries FORM-TL-05}\\[0.3cm]
+{\Large\bfseries Informe de Revision Tecnica Cruzada\\[0.2cm] del Codigo del PFC}\\[0.5cm]
+{\normalsize Principios SOLID, patrones de diseno, separacion de capas,\\
+manejo de excepciones distribuidas y observabilidad}\\[1.6cm]
+
+\begin{tabularx}{0.92\textwidth}{@{}l X@{}}
+\toprule
+\multicolumn{2}{@{}l}{\textbf{Equipo revisor}}\\
+\midrule
+Sigla & FUVV\\
+Integrante 1 & Freddy Vladimir Farinango Guandinango --- Bloques A y B\\
+Integrante 2 & Isaias Abraham Urbina Romero --- Bloques C, D y E\\
+\bottomrule
+\end{tabularx}
+
+\vspace{0.9cm}
+
+\begin{tabularx}{0.92\textwidth}{@{}l X@{}}
+\toprule
+\multicolumn{2}{@{}l}{\textbf{PFC revisado (equipo ajeno)}}\\
+\midrule
+Sigla & ACC\\
+Sistema & Soporte Tecnico ISP (gestion de tickets)\\
+Repositorio & \url{\repoRevisado}\\
+Commit auditado & \texttt{\commitCorto}\\
+SHA completo & \texttt{\commitLargo}\\
+Rama & \texttt{feature/entrega-3}\\
+Fecha y hora & \fechaAuditoria\\
+\bottomrule
+\end{tabularx}
+
+\vspace{1.2cm}
+{\normalsize Repositorio del equipo revisor:}\\[0.15cm]
+{\small\url{\repoRevisor}}
+
+\vfill
+{\small Periodo 2026--2027 \quad$\cdot$\quad Prof. PhD. Gleiston C. Guerrero-Ulloa}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% ============================ 1. OBJETO =====================================
+\section{Objeto de la revision y congelacion del commit}
+
+Este informe documenta la revision tecnica cruzada que el equipo FUVV realizo sobre el
+Proyecto Fin de Curso del equipo ACC, \emph{Soporte Tecnico ISP}, conforme a la rotacion
+fijada en la Seccion 2 de FORM-TL-05. Toda la revision se ejecuto sobre una unica
+instantanea del repositorio, congelada antes de iniciar el recorrido de la lista de
+verificacion. La salida literal de los comandos exigidos es la siguiente.
+
+\begin{lstlisting}[caption={Comandos de verificacion del objeto revisado (Fase F1)},label={lst:git},numbers=none]
+$ git log -1 --format="%H | %aI | %an"
+479b6370a640c0d2edfad801e6937e9ede8c3c80 | 2026-07-27T21:51:36-05:00 | Jeremy Alvarez
+
+$ git rev-parse --short HEAD
+479b637
+
+$ git ls-files | wc -l
+1795
+
+$ git rev-parse --abbrev-ref HEAD
+feature/entrega-3
+\end{lstlisting}
+
+El repositorio acumula 34 commits y registra cuatro autores: Carlos Jose Carpio Mendoza,
+Cristhian Daniel Pacheco Cardenas, Robinson Rodrigo Cando Moreno y Jeremy Alvarez. Todos
+los hallazgos de este informe citan archivo, clase o funcion, numero de linea y el SHA
+\texttt{\commitCorto}. Ninguna linea citada fue reconstruida de memoria: cada fragmento se
+extrajo del arbol de trabajo correspondiente a ese commit.
+
+\begin{tcolorbox}[colback=white,colframe=black!35,title=\textbf{Alcance y limitaciones declaradas}]
+La revision es estatica. No se levanto el sistema completo (\texttt{start-all.ps1} requiere
+un cluster CockroachDB de tres nodos, Kafka y MongoDB), por lo que los hallazgos relativos
+a resiliencia (Bloque D) se sostienen en la lectura del codigo y de la configuracion, no en
+una prueba de caos ejecutada por este equipo revisor. Alli donde el juicio depende de una
+ejecucion no realizada, se indica explicitamente.
+\end{tcolorbox}
+
+% ======================== 2. ARQUITECTURA ===================================
+\section{Mapa de arquitectura reconstruido}
+
+El mapa siguiente se reconstruyo leyendo el arbol de fuentes, los ficheros
+\texttt{application.yml}, los scripts de \ruta{db-cluster/scripts/} y las URL cableadas en
+el frontend; no se tomo
+de los diagramas incluidos en \texttt{docs/diagrams}, precisamente para poder contrastar
+codigo contra documentacion.
+
+\begin{table}[h]
+\centering
+\caption{Modulos desplegables identificados en el commit \texttt{\commitCorto}}
+\label{tab:modulos}
+\small
+\begin{tabularx}{\textwidth}{@{}l l l X@{}}
+\toprule
+\textbf{Modulo} & \textbf{Tecnologia} & \textbf{Puerto} & \textbf{Responsabilidad observada en el codigo}\\
+\midrule
+\texttt{auth-service} & Spring Boot / Java & 8001 & Registro, login, refresh, logout, validacion de token y alta administrativa de usuarios.\\
+\texttt{svc-principal} & Spring Boot / Java & 8002 & Ciclo de vida del ticket, autorizacion por rol y publicacion de eventos.\\
+\texttt{report-service} & Spring Boot / Java & 8005 & Modelo de lectura CQRS reconstruido desde cuatro topicos y exportacion CSV.\\
+\texttt{notification-service} & Node.js & --- & Consume tres topicos y persiste notificaciones simuladas en MongoDB.\\
+\texttt{ai-service} & Python / FastAPI & --- & Clasificacion de tickets por reglas y publicacion de \texttt{ticket.classified}.\\
+\texttt{frontend} & HTML/JS sin framework & --- & Cliente que invoca directamente los tres servicios HTTP.\\
+\texttt{db-cluster} & CockroachDB & 26257 & Tres bases separadas: \texttt{auth\_db}, \texttt{ticket\_db}, \texttt{report\_db}.\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\begin{lstlisting}[numbers=none,basicstyle=\ttfamily\scriptsize]
+   frontend/app.js  (3 URL cableadas: 8001, 8002, 8005)
+        |               |                  |
+        v               v                  v
+  auth-service     svc-principal      report-service
+    (8001)            (8002)              (8005)
+        ^                |                  ^
+        |  GET /validate |  publica         | consume 4 topicos
+        +----------------+                  |
+           (llamada sincrona por peticion)  |
+                         |                  |
+                         v                  |
+                    +----------- KAFKA -----+-------------------+
+                    | ticket.created / status-changed / assigned |
+                    | ticket.classified                          |
+                    +-----+--------------------------+-----------+
+                          |                          |
+                          v                          v
+                    ai-service              notification-service
+                    (clasifica)              (Mongo, simulado)
+
+   Persistencia:  auth_db | ticket_db | report_db   (CockroachDB, 3 nodos)
+                  NO hay base compartida entre servicios.
+\end{lstlisting}
+\caption{Mapa de dependencias reconstruido a partir del codigo. La unica arista sincrona
+entre servicios es la validacion de token \texttt{svc-principal}$\rightarrow$\texttt{auth-service};
+el resto de la integracion es asincrona por Kafka.}
+\label{fig:arq}
+\end{figure}
+
+Dos observaciones estructurales se desprenden del mapa. Primera: no existe punto de entrada
+unico; el navegador conoce y contacta tres servicios distintos, de modo que la funcion de
+puerta de enlace esta ausente y sus responsabilidades transversales quedan duplicadas
+dentro de cada servicio. Segunda: la separacion de datos por servicio si esta correctamente
+implementada, lo que descarta de entrada el antipatron de base de datos compartida.
+
+% ==================== 3. TABLA CONSOLIDADA ==================================
+\section{Tabla consolidada de hallazgos}
+
+\small
+\begin{xltabular}{\textwidth}{@{}l l X X l@{}}
+\caption{Hallazgos consolidados sobre el commit \texttt{\commitCorto} (Anexo B de FORM-TL-05)}\label{tab:hallazgos}\\
+\toprule
+\textbf{ID} & \textbf{Item} & \textbf{Hallazgo} & \textbf{Evidencia (ruta:linea)} & \textbf{Sev.}\\
+\midrule
+\endfirsthead
+\toprule
+\textbf{ID} & \textbf{Item} & \textbf{Hallazgo} & \textbf{Evidencia (ruta:linea)} & \textbf{Sev.}\\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+H01 & A1 & \texttt{TicketService} concentra negocio, autorizacion, persistencia, serializacion, mensajeria y metricas & \ruta{svc-principal/service/TicketService.java}:51-64, 99-128 & Mayor\\
+H02 & A2 & La politica de roles se decide con cadenas de \texttt{if} replicadas en cuatro metodos & \ruta{TicketService.java}:74, 141-169, 226-253 & Mayor\\
+H03 & A5 & La entidad de dominio \texttt{Ticket} importa Jakarta Persistence & \ruta{svc-principal/domain/Ticket.java}:3-9, 26-34 & Menor\\
+H04 & A4 & \texttt{TicketRepository} hereda toda la superficie CRUD de \texttt{JpaRepository}, incluidos borrados que nadie usa & \ruta{svc-principal/repository/TicketRepository.java}:15-23 & Menor\\
+H05 & B4/B5 & No existe puerta de enlace: el frontend cablea tres puertos y cada servicio duplica la validacion remota & \ruta{frontend/app.js}:5-7; \ruta{svc-principal/config/AuthGatewayFilter.java}:37-42 & Mayor\\
+H06 & C2 & La capa de servicio importa DTO de la capa web & \ruta{TicketService.java}:12; \ruta{auth-service/service/AuthService.java}:14-18 & Menor\\
+H07 & C5 & Secreto JWT y contrasena de administrador con valor por defecto versionado & \ruta{auth-service/resources/application.yml}:33, 42-43 & Mayor\\
+H08 & C5 & URL de los tres servicios cableadas en el codigo del frontend & \ruta{frontend/app.js}:5-7; \ruta{frontend/auth/auth.js}:8 & Menor\\
+H09 & D2/D4 & La llamada a \texttt{auth-service} se hace sin tiempo de espera explicito ni respuesta de degradacion & \ruta{svc-principal/config/AuthGatewayFilter.java}:40, 60-65, 76-78 & \sev{Critica}\\
+H10 & D5 & El manejador generico devuelve \texttt{ex.getMessage()} al cliente & \ruta{svc-principal/web/GlobalExceptionHandler.java}:37-41; \ruta{AuthGatewayFilter.java}:77 & Mayor\\
+H11 & E1/E2/E3 & Registro por consola en Node, sin identificador de correlacion ni formato estructurado & \ruta{notification-service/src/kafkaConsumer.js}:51, 56; \ruta{index.js}:23, 27 & Mayor\\
+H12 & E4/E5 & Se registra el payload completo del evento y no existe auditoria de eventos criticos de autenticacion & \ruta{report-service/config/ReportEventListener.java}:82, 95, 105, 118; \ruta{AuthService.java}:40-54 & Mayor\\
+\end{xltabular}
+
+\normalsize
+\noindent Los doce hallazgos se distribuyen en cuatro del Bloque A, uno del B, tres del C,
+dos del D y dos del E, con una severidad Critica y siete Mayores. La columna de enlace al
+issue correspondiente figura en la Tabla~\ref{tab:issues}.
+
+% ======================= 4. ANALISIS POR BLOQUE =============================
+\section{Analisis por bloque}
+
+\begin{xltabular}{\textwidth}{@{}c c X@{}}
+\caption{Lista de verificacion completa: 25 items marcados sobre el commit \texttt{\commitCorto}}\label{tab:checklist}\\
+\toprule
+\textbf{Item} & \textbf{Marca} & \textbf{Justificacion de la marca}\\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Item} & \textbf{Marca} & \textbf{Justificacion de la marca}\\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+\multicolumn{3}{@{}l}{\textit{Bloque A --- Principios SOLID}}\\
+A1 & N & \texttt{TicketService} acumula seis responsabilidades (H01).\\
+A2 & N & Anadir un rol obliga a editar cuatro metodos existentes (H02).\\
+A3 & NA & No hay jerarquias propias ni interfaces con multiples implementaciones: las unicas interfaces son los cuatro repositorios de Spring Data, cuya implementacion genera el contenedor. No existe ningun \texttt{UnsupportedOperationException} en codigo propio, de modo que no hay contrato de autor que pueda romperse.\\
+A4 & P & Los repositorios exponen una interfaz mucho mas ancha que la usada por sus clientes (H04).\\
+A5 & N & El modelo de dominio depende del ORM (H03).\\
+\addlinespace
+\multicolumn{3}{@{}l}{\textit{Bloque B --- Patrones de diseno}}\\
+B1 & C & Se identifican Repository, CQRS y Saga por coreografia con sus roles asignados.\\
+B2 & C & Cada patron responde a un problema real y esta justificado en ADR-0003 y ADR-0004.\\
+B3 & P & \texttt{dispatcher.js} decide el canal con \texttt{switch} sobre el tipo de evento.\\
+B4 & P & Base de datos por servicio correcta; puerta de enlace ausente (H05).\\
+B5 & N & Cadena sincrona sin proteccion entre \texttt{svc-principal} y \texttt{auth-service} (H05, H09).\\
+\addlinespace
+\multicolumn{3}{@{}l}{\textit{Bloque C --- Separacion de capas}}\\
+C1 & C & Los paquetes \texttt{web}, \texttt{service}, \texttt{domain}, \texttt{repository} y \texttt{config} existen como estructura real de paquetes.\\
+C2 & N & La capa de servicio importa DTO de la capa web (H06); el dominio importa el ORM (H03).\\
+C3 & C & \texttt{TicketResponse} y \texttt{SummaryResponse} median entre la entidad y la respuesta HTTP.\\
+C4 & C & \texttt{TicketController} solo traduce y delega; la decision de rol vive en el servicio.\\
+C5 & N & Secretos por defecto versionados (H07) y URL cableadas en el frontend (H08).\\
+\addlinespace
+\multicolumn{3}{@{}l}{\textit{Bloque D --- Excepciones distribuidas}}\\
+D1 & P & No hay capturas silenciosas, pero \ruta{ReportEventListener.java}:131 registra el conflicto sin adjuntar la excepcion.\\
+D2 & N & \texttt{RestClient.create()} sin tiempo de espera explicito (H09).\\
+D3 & C & Reintento acotado a una sola vez sobre operacion repetible, con metrica asociada.\\
+D4 & N & No hay degradacion: la caida de \texttt{auth-service} se traduce en 401 al usuario (H09).\\
+D5 & N & Se filtra el mensaje interno de la excepcion al cliente (H10).\\
+\addlinespace
+\multicolumn{3}{@{}l}{\textit{Bloque E --- Logging y trazabilidad}}\\
+E1 & P & Java y Python usan biblioteca de registro; Node imprime por consola (H11).\\
+E2 & N & No se genera ni propaga identificador de correlacion en ningun punto del sistema.\\
+E3 & N & Los mensajes son cadenas concatenadas, sin campos filtrables.\\
+E4 & N & Se registra el payload completo del evento, con \texttt{clientId} y descripcion (H12).\\
+E5 & N & \texttt{AuthService} no declara registrador ni componente de auditoria.\\
+\end{xltabular}
+
+\noindent Los cinco bloques se recorrieron completos: 25 items marcados, con la unica marca
+NA justificada en la propia tabla. Los cinco principios SOLID fueron verificados. El resto de
+esta seccion desarrolla la evidencia de cada hallazgo.
