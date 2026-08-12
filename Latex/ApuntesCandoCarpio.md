@@ -53,3 +53,71 @@ Otro punto que anotamos es que algunas clases de la capa de servicio están util
 Comprendimos que esto genera dependencia entre capas. Por ejemplo, si posteriormente modificamos un objeto utilizado para recibir información HTTP, podríamos terminar modificando también nuestra lógica de aplicación.
 
 Como posible solución entendimos que podríamos utilizar comandos u objetos propios de la capa de aplicación y realizar la conversión desde el DTO recibido por el controlador hacia esos objetos internos.
+
+Seguridad de secretos y contraseñas
+
+Uno de los aspectos que consideramos más importantes fue la presencia de valores por defecto para el secreto JWT y para una cuenta administrativa.
+
+Entendimos que, aunque estos valores hayan sido colocados pensando solamente en desarrollo, existe un riesgo porque, si las variables de entorno no están correctamente configuradas, el sistema podría iniciar utilizando esos valores conocidos.
+
+Por esta razón anotamos que los secretos, contraseñas y datos sensibles deben proporcionarse externamente y que sería mejor impedir el inicio de la aplicación si una variable obligatoria de seguridad no se encuentra definida.
+
+URLs escritas directamente en el frontend
+
+También entendimos que las direcciones de los diferentes servicios no deberían encontrarse escritas directamente dentro del código JavaScript.
+
+Esto complica el cambio entre diferentes ambientes, por ejemplo desarrollo, pruebas o producción. Por esta razón anotamos que las URLs deben manejarse mediante variables de entorno o mediante una configuración externa.
+
+Problema crítico: comunicación con auth-service
+
+El hallazgo que más llamó nuestra atención fue el relacionado con la comunicación entre svc-principal y auth-service.
+
+Actualmente se realiza una llamada HTTP para validar el token, pero la revisión identificó que no existe un tiempo de espera configurado explícitamente.
+
+Entendimos que esto puede convertirse en un problema serio si auth-service se encuentra lento o deja de responder. Las solicitudes podrían permanecer esperando y ocupar los recursos del servicio principal. Si llegan muchas solicitudes mientras auth-service está presentando problemas, el fallo podría extenderse al servicio encargado de gestionar los tickets.
+
+Por esta razón anotamos que debemos configurar tiempos máximos de conexión y lectura y diferenciar correctamente entre un token inválido y un servicio de autenticación temporalmente no disponible.
+
+También comprendimos la recomendación de utilizar en el futuro un patrón como Circuit Breaker, porque permitiría dejar de realizar temporalmente solicitudes hacia un servicio que ya sabemos que está presentando múltiples fallos.
+
+Manejo de mensajes de error
+
+Otra observación que entendimos claramente fue que no debemos devolver directamente ex.getMessage() al usuario.
+
+El problema es que una excepción puede contener información interna del sistema, como nombres de clases, información de la base de datos o mensajes técnicos que no deberían ser visibles para el usuario.
+
+Anotamos que los mensajes que recibe el usuario deben ser controlados y generales, mientras que la información técnica completa del error debe permanecer únicamente en los registros internos del sistema.
+
+Logging e identificador de correlación
+
+También comprendimos que nuestros diferentes servicios utilizan mecanismos de registro distintos. Algunos utilizan bibliotecas de logging, mientras que en otros casos se utiliza directamente console.log o console.error.
+
+Pero el aspecto más importante fue entender la necesidad de implementar un identificador de correlación.
+
+Como una operación puede pasar por svc-principal, auth-service, Kafka, ai-service, report-service y notification-service, necesitamos alguna forma de saber que todos esos registros corresponden a la misma operación.
+
+Actualmente podríamos intentar relacionarlos manualmente mediante la hora o mediante el identificador del ticket, pero eso dificulta encontrar un problema.
+
+Por lo tanto, anotamos que debemos generar un identificador cuando comienza una operación y propagarlo durante todo el recorrido entre servicios y eventos. De esta manera podríamos buscar ese identificador en los logs y reconstruir fácilmente todo lo ocurrido.
+
+Información sensible dentro de los logs
+
+También entendimos que debemos tener cuidado con la información que almacenamos en los registros. En algunos casos se está registrando el payload completo de los eventos, donde pueden encontrarse datos como el identificador del cliente y la descripción escrita dentro de un ticket.
+
+Anotamos que debemos sanitizar los datos antes de escribirlos en los logs y registrar únicamente la información necesaria para diagnosticar el sistema.
+
+Además, entendimos que existen operaciones importantes de autenticación que deberían quedar registradas como parte de una auditoría, por ejemplo intentos de inicio de sesión, reutilización de tokens o determinadas acciones administrativas.
+
+Conclusión de nuestros apuntes
+
+En conclusión, de la revisión realizada por Farinango y Urbina entendimos que nuestro proyecto no está mal estructurado en su totalidad. Al contrario, posee elementos positivos como la separación de datos por servicio, el uso de CQRS, Kafka y una política de reintento controlada.
+
+Lo que principalmente debemos fortalecer es la manera en que el sistema responde cuando uno de sus componentes falla, además de mejorar la seguridad, la separación de responsabilidades y la trazabilidad de las operaciones.
+
+De todos los aspectos revisados anotamos como prioridad solucionar primero el problema de tiempo de espera con auth-service, posteriormente eliminar los secretos y contraseñas por defecto, controlar correctamente los mensajes de error y mejorar los logs. Después debemos trabajar en aspectos estructurales como dividir responsabilidades de TicketService, centralizar los permisos de los roles, mejorar la separación entre capas y establecer una puerta de enlace única para nuestros servicios.
+
+La revisión nos ayudó a comprender que en un sistema distribuido no es suficiente con que cada servicio funcione individualmente. También debemos pensar qué sucede cuando un servicio se demora, deja de responder, devuelve un error o cuando necesitamos seguir una operación que pasó por varios componentes. Por eso entendimos que conceptos como tolerancia a fallos, trazabilidad, seguridad y separación de responsabilidades son importantes para que nuestro sistema sea más mantenible y confiable.
+
+
+
+
