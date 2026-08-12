@@ -313,3 +313,355 @@ E5 & N & \texttt{AuthService} no declara registrador ni componente de auditoria.
 \noindent Los cinco bloques se recorrieron completos: 25 items marcados, con la unica marca
 NA justificada en la propia tabla. Los cinco principios SOLID fueron verificados. El resto de
 esta seccion desarrolla la evidencia de cada hallazgo.
+\subsection{Bloque A --- Principios SOLID}
+
+\paragraph{H01 --- Responsabilidad unica.}
+\texttt{TicketService} recibe por constructor cuatro colaboradores de naturaleza distinta y,
+ademas de aplicar las reglas de negocio del ticket, decide la autorizacion por rol, serializa
+eventos a JSON, los publica en Kafka y actualiza contadores de metricas.
+
+\begin{lstlisting}[caption={\texttt{TicketService.java}, lineas 51--64},firstnumber=51]
+private final TicketRepository ticketRepository;
+private final KafkaTemplate<String, String> kafkaTemplate;
+private final ObjectMapper objectMapper;
+private final CrdbMetrics crdbMetrics;
+\end{lstlisting}
+
+La consecuencia concreta no es estetica. En la Entrega 4 el equipo debera introducir el
+cierre de ticket con notificacion al abonado y, previsiblemente, un evento adicional.
+Con la estructura actual ese cambio toca la misma clase que ya contiene la matriz de
+autorizacion, de modo que un error de mensajeria y un error de permisos se corrigen
+editando el mismo archivo, y ninguna prueba unitaria puede ejercitar la regla de negocio
+sin simular tambien \texttt{KafkaTemplate}. Se trata de una violacion estructural, no de
+una preferencia de estilo: la clase tiene cuatro razones distintas para cambiar.
+
+\paragraph{H02 --- Abierto/cerrado.}
+La decision de que puede hacer cada rol esta repartida en literales comparados con
+\texttt{equals} dentro de \texttt{createTicket} (linea 74), \texttt{listTickets}
+(141--169), \texttt{assertCanView} (225--239) y \texttt{assertCanManage} (243--254).
+
+\begin{lstlisting}[caption={\texttt{TicketService.java}, lineas 141--168 (extracto)},firstnumber=141]
+if (ROLE_ADMIN.equals(role)) { ... }
+if (ROLE_TECNICO.equals(role)) { ... }
+if (ROLE_CLIENTE.equals(role)) { ... }
+\end{lstlisting}
+
+Incorporar un cuarto rol --- por ejemplo un \texttt{SUPERVISOR} de zona, que es la extension
+natural del dominio --- exige editar cuatro metodos ya escritos y probados. El riesgo real
+es la inconsistencia parcial: basta olvidar uno de los cuatro puntos para que el rol pueda
+ver un ticket que no puede gestionar, o al reves. Es importante reconocer que el equipo
+documento la matriz de autorizacion en el comentario de clase (lineas 23--39), lo que
+demuestra conciencia del problema; lo que falta es trasladar esa matriz de la documentacion
+al codigo, como estructura de datos o como politica sustituible.
+
+\paragraph{H03 --- Inversion de dependencias.}
+La clase \texttt{Ticket}, que representa el concepto central del dominio, importa siete
+anotaciones de \texttt{jakarta.persistence} y se declara \texttt{@Entity}. El paquete
+\texttt{domain} deja asi de ser independiente de la tecnologia de almacenamiento. La
+severidad es Menor porque el sistema funciona y el acoplamiento es una eleccion habitual en
+proyectos Spring; el costo aparece si el equipo decide, como sugiere el ADR-0003, mover la
+estrategia de fragmentacion, momento en el que las anotaciones \texttt{@IdClass} y
+\texttt{@Id} sobre \texttt{created\_at} obligan a modificar el modelo de negocio para
+resolver un problema puramente de persistencia.
+
+\paragraph{H04 --- Segregacion de interfaces.}
+\texttt{TicketRepository} extiende \texttt{JpaRepository}, con lo que hereda alrededor de
+veinte metodos --- entre ellos \texttt{deleteAll}, \texttt{deleteAllInBatch} y
+\texttt{saveAll} --- de los que el servicio solo utiliza \texttt{save} y las consultas
+declaradas. Mas revelador es que el propio equipo documenta, en las lineas 17--21, que el
+\texttt{findById} heredado es inutilizable en la practica porque exige una clave compuesta
+que el llamador no conoce. Una interfaz que obliga a advertir por comentario cual de sus
+metodos no debe usarse es, por definicion, mas ancha que su cliente.
+
+\subsection{Bloque B --- Patrones de diseno aplicados}
+
+\paragraph{Patrones correctamente implementados.}
+El primero es \emph{Repository}: \texttt{TicketRepository} (linea 15) y
+\texttt{TicketSummaryRepository} ocupan el rol de abstraccion de coleccion, el contenedor
+de Spring genera el rol de implementacion concreta, y ningun controlador recibe SQL crudo.
+El segundo es \emph{CQRS} con modelo de lectura desacoplado: \texttt{ReportEventListener}
+(lineas 62--120) es el lado de escritura del modelo de consulta y reconstruye
+\texttt{ticket\_summary} exclusivamente a partir de los cuatro eventos, mientras
+\texttt{ReportController} sirve solo lecturas. La alternativa mas simple --- que
+report-service consultara directamente \texttt{ticket\_db} --- fue descartada, y con razon:
+habria introducido el antipatron de base de datos compartida. El tercero es la
+\emph{Saga por coreografia} entre \texttt{ticket.created} y \texttt{ticket.classified},
+documentada en el propio codigo (\texttt{TicketService.java}, lineas 66--72).
+
+Merece reconocimiento explicito el tratamiento de los eventos fuera de orden en
+\texttt{ReportEventListener}: los cuatro escuchadores hacen \emph{upsert} en vez de
+descartar el mensaje adelantado, y el comentario de clase (lineas 26--46) explica la carrera
+observada en ejecucion real. Es la pieza mejor razonada del sistema revisado.
+
+\paragraph{H05 --- Puerta de enlace ausente y acoplamiento sincrono.}
+El frontend no contacta un punto de entrada unico sino tres servicios distintos:
+
+\begin{lstlisting}[caption={\texttt{frontend/app.js}, lineas 5--7},firstnumber=5]
+const API_BASE = "http://localhost:8002/api/v1";
+const AUTH_API_BASE = "http://localhost:8001/api/v1/auth";
+const REPORTS_API_BASE = "http://localhost:8005/api/v1/reports";
+\end{lstlisting}
+
+En ausencia de puerta de enlace, la responsabilidad transversal de autenticacion se
+resuelve replicandola: existen dos clases \texttt{AuthGatewayFilter} practicamente
+identicas, una en \texttt{svc-principal} y otra en \texttt{report-service}, ambas creando su
+cliente HTTP en la linea 39--40 y capturando \texttt{RestClientException} en la linea
+76--77. Esto reproduce el olor descrito en la literatura como servicios acoplados por
+llamadas sincronas en cadena, y su tecnica de deteccion es directa: un unico servicio
+aparece como destino obligatorio de todas las peticiones protegidas del sistema, sin
+mecanismo de aislamiento [5], [9].
+
+\paragraph{Patron mal aplicado (B3).}
+\texttt{dispatcher.js} decide el canal de notificacion con un \texttt{switch} sobre el tipo
+de evento. Hoy son tres casos y la solucion es proporcionada; pero el modulo esta descrito
+por sus autores como logica pura de despacho multicanal, y cada evento nuevo del dominio
+anadira una rama. Se marca P, no N: la critica es preventiva, no un defecto actual.
+
+\subsection{Bloque C --- Separacion de capas}
+
+El grafo de dependencias real, leido desde las sentencias \texttt{import}, es
+\texttt{web} $\rightarrow$ \texttt{service} $\rightarrow$ \texttt{repository} $\rightarrow$
+\texttt{domain}, que es la direccion correcta, con dos aristas invertidas. La primera es
+\texttt{service} $\rightarrow$ \texttt{web.dto}: \texttt{TicketService} importa
+\texttt{CreateTicketRequest} en la linea 12, y \texttt{AuthService} importa cinco DTO web en
+las lineas 14--18. La consecuencia practica es que un cambio en el contrato HTTP --- por
+ejemplo renombrar un campo del formulario --- se propaga hasta la capa de aplicacion. La
+segunda es \texttt{domain} $\rightarrow$ ORM, ya descrita en H03.
+
+\paragraph{H07 --- Secretos por defecto.}
+\begin{lstlisting}[caption={\texttt{auth-service/src/main/resources/application.yml}, lineas 33 y 42--43},firstnumber=33]
+secret: ${AUTH_JWT_SECRET:dev-only-insecure-secret-please-change-me-3242}
+...
+email: ${ADMIN_BOOTSTRAP_EMAIL:admin@soporte.local}
+password: ${ADMIN_BOOTSTRAP_PASSWORD:Admin123!}
+\end{lstlisting}
+
+El equipo advierte en comentario que estos valores son solo para desarrollo local, lo cual
+es honesto, pero el mecanismo elegido es el que falla: si la variable de entorno no se
+define, el sistema arranca igualmente con un secreto de firma publicado en el repositorio y
+una cuenta administrativa de contrasena conocida. Un despliegue con una variable mal escrita
+no produce ningun error visible; produce un sistema que parece funcionar y es suplantable.
+La configuracion externalizada solo cuenta como tal si su ausencia impide el arranque.
+
+\subsection{Bloque D --- Manejo de excepciones distribuidas}
+
+\paragraph{D3, correctamente resuelto.}
+Debe reconocerse que la politica de reintentos es de las mejores decisiones del sistema.
+\texttt{saveWithRetry} (lineas 215--223) reintenta una unica vez ante
+\texttt{ConcurrencyFailureException}, incrementa un contador expuesto a Prometheus y deja
+propagar un segundo conflicto en lugar de reintentar indefinidamente. La operacion
+reintentada es un \texttt{save} sobre una entidad con identidad ya asignada, es decir,
+repetible sin efecto duplicado. Cumple los tres requisitos del item D3.
+
+\paragraph{H09 --- Sin tiempo de espera ni degradacion.}
+\begin{lstlisting}[caption={\texttt{svc-principal/.../config/AuthGatewayFilter.java}, lineas 40 y 60--65},firstnumber=40]
+this.restClient = RestClient.create();
+...
+ApiResponse<ValidateResponse> validated = restClient.get()
+        .uri(validateUrl)
+        .header("Authorization", header)
+        .retrieve()
+        .body(new ParameterizedTypeReference<ApiResponse<ValidateResponse>>() {});
+\end{lstlisting}
+
+\texttt{RestClient.create()} sin constructor de peticiones configurado no fija tiempo de
+espera de conexion ni de lectura; hereda el del cliente HTTP subyacente, que en la
+configuracion por omision de la JDK es ilimitado para la lectura. Como el filtro se ejecuta
+en cada peticion a \texttt{/api/v1/tickets/**}, un \texttt{auth-service} lento --- no caido,
+sino lento --- retiene un hilo del contenedor por cada peticion entrante hasta agotar el
+pool. Este es el motivo de la severidad Critica: no es un fallo de una peticion, es un modo
+de fallo que se propaga a todo el servicio de tickets. La rubrica pide explicitamente que no
+se dependa del valor por omision de la biblioteca, y aqui se depende.
+
+El mismo bloque incumple D4. La captura de la linea 76--78 traduce cualquier
+\texttt{RestClientException} en una respuesta 401, con lo que un problema de infraestructura
+se comunica al abonado como si fuera un problema de sus credenciales, y no existe ningun
+valor de reserva ni respuesta degradada.
+
+\paragraph{H10 --- Exposicion del mensaje interno.}
+\begin{lstlisting}[caption={\texttt{svc-principal/.../web/GlobalExceptionHandler.java}, lineas 37--41},firstnumber=37]
+@ExceptionHandler(Exception.class)
+public ResponseEntity<ApiResponse<Object>> handleGeneric(Exception ex) {
+    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+            .body(ApiResponse.of(null, "Error interno: " + ex.getMessage()));
+}
+\end{lstlisting}
+
+El formato de error si es uniforme entre servicios --- todos usan \texttt{ApiResponse} ---,
+lo que satisface la primera mitad de D5. Falla la segunda: el mensaje de una excepcion no
+controlada suele contener el nombre de la tabla, la sentencia SQL o la clase del driver. La
+misma fuga aparece en \texttt{AuthGatewayFilter.java}, linea 77, que concatena
+\texttt{e.getMessage()} en la respuesta 401.
+
+\subsection{Bloque E --- Logging y trazabilidad}
+
+\paragraph{H11 --- Registro heterogeneo y sin correlacion.}
+Conviven tres mecanismos de registro
+distintos. Los tres servicios Java usan \texttt{java.util.logging}; \texttt{ai-service} usa el modulo \texttt{logging}, correctamente inicializado en
+\texttt{main.py}, linea 19; y \texttt{notification-service} imprime por consola:
+
+\begin{lstlisting}[caption={\texttt{notification-service/src/kafkaConsumer.js}, lineas 51 y 56},firstnumber=51]
+console.error(`No se pudo procesar un mensaje de ${topic}:`, err);
+...
+console.log(`notification-service escuchando: ${...}`);
+\end{lstlisting}
+
+Ninguno de los cinco servicios genera un identificador de correlacion, y ni
+\texttt{AuthGatewayFilter} ni los productores de Kafka propagan cabecera alguna. Los
+mensajes, ademas, se construyen por concatenacion, de modo que no se puede filtrar por
+servicio ni por operacion sin recurrir a expresiones regulares sobre texto libre.
+
+\paragraph{H12 --- Datos sensibles y ausencia de auditoria.}
+\begin{lstlisting}[caption={\texttt{report-service/.../config/ReportEventListener.java}, linea 82},firstnumber=82]
+LOGGER.log(Level.WARNING, "No se pudo procesar un mensaje de ticket.created: " + payload, e);
+\end{lstlisting}
+
+El payload de \texttt{ticket.created} transporta \texttt{ticketId}, \texttt{zone},
+\texttt{clientId}, \texttt{description} y \texttt{createdAt}. Ante un mensaje que falla, el
+identificador del abonado y el texto libre que escribio quedan integros en el registro. El
+patron se repite en las lineas 95, 105 y 118, y en \texttt{ai-service}
+(\texttt{kafka\_consumer.py}, linea 93). Adicionalmente, los dos \texttt{application.yml}
+fijan \texttt{org.hibernate.SQL: DEBUG} y \texttt{show-sql: true}, con lo que toda sentencia
+ejecutada se vuelca al registro.
+
+En cuanto a E5, \texttt{AuthService} implementa \texttt{register}, \texttt{login},
+\texttt{refresh}, \texttt{logout}, \texttt{createUserAsAdmin} y la deteccion de reutilizacion
+de token de refresco --- esta ultima con su propia
+excepcion, \texttt{TokenReuseDetected\-Exception}, lo que indica que el equipo modelo el ataque. Sin
+embargo, la clase no declara ningun \texttt{Logger} entre sus lineas 34--54 ni recibe
+componente de auditoria alguno. La consecuencia es concreta: si manana se detecta la
+reutilizacion de un token de refresco, el sistema revoca la sesion y no queda constancia de
+que ocurrio, de que usuario se trataba ni de cuando sucedio.
+
+% ========================= 5. ISSUES ========================================
+\section{Issues abiertos en el repositorio revisado}
+
+Los doce hallazgos se publicaron como issues en \url{\repoRevisado}, siguiendo la plantilla
+del Anexo A. El reparto entre los dos integrantes del equipo autor designados como
+responsables es de seis y seis.
+
+\begin{xltabular}{\textwidth}{@{}l X l l l@{}}
+\caption{Issues abiertos, responsable asignado y fecha de resolucion}\label{tab:issues}\\
+\toprule
+\textbf{ID} & \textbf{Titulo del issue} & \textbf{Etiquetas} & \textbf{Responsable} & \textbf{Fecha}\\
+\midrule
+\endfirsthead
+\toprule
+\textbf{ID} & \textbf{Titulo del issue} & \textbf{Etiquetas} & \textbf{Responsable} & \textbf{Fecha}\\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+H01 & Extraer la publicacion de eventos y la politica de autorizacion de \texttt{TicketService} (SRP) & solid, mayor & C. Carpio & \cierreSemana\\
+H02 & Centralizar la matriz de roles en una politica sustituible (OCP) & solid, mayor & R. Cando & \cierreSemana\\
+H03 & Separar la entidad JPA del modelo de dominio \texttt{Ticket} (DIP) & solid, menor & C. Carpio & \cierreSemana\\
+H04 & Acotar \texttt{TicketRepository} a las operaciones realmente usadas (ISP) & solid, menor & R. Cando & \cierreSemana\\
+H05 & Introducir una puerta de enlace unica y eliminar el filtro duplicado & patrones, mayor & C. Carpio & \cierreSemana\\
+H06 & Sustituir el DTO web por un comando de aplicacion en la capa de servicio & capas, menor & R. Cando & \cierreSemana\\
+H07 & Eliminar el secreto JWT y la contrasena de administrador por defecto & capas, mayor & C. Carpio & \cierreSemana\\
+H08 & Externalizar las URL de los servicios en el frontend & capas, menor & R. Cando & \cierreSemana\\
+H09 & Configurar tiempo de espera y respuesta degradada al validar el token & excepciones, critica & C. Carpio & \cierreSemana\\
+H10 & Dejar de exponer \texttt{ex.getMessage()} en las respuestas de error & excepciones, mayor & R. Cando & \cierreSemana\\
+H11 & Generar y propagar un identificador de correlacion; unificar el registro & observabilidad, mayor & C. Carpio & \cierreSemana\\
+H12 & Sanitizar los payloads registrados y auditar los eventos de autenticacion & observabilidad, mayor & R. Cando & \cierreSemana\\
+\end{xltabular}
+
+\noindent Cada issue declara en su cuerpo el commit \texttt{\commitCorto}, el item de la
+lista de verificacion, el fragmento de codigo minimo, la severidad, el atributo de calidad
+segun ISO/IEC 25010 [11], la propuesta de correccion en pasos concretos y un criterio de
+aceptacion verificable. A modo de ejemplo, el criterio de aceptacion de H09 es que una
+prueba con \texttt{auth-service} detenido termine dentro del tiempo de espera configurado y
+devuelva un codigo distinto de 401, y el de H06 es que ninguna clase del paquete
+\texttt{service} contenga un \texttt{import} de \texttt{web.dto}.
+
+% ==================== 6. PREGUNTAS OBLIGATORIAS =============================
+\section{Analisis de las preguntas obligatorias}
+
+\paragraph{1. Que violacion de SOLID encarece mas el cambio de la Entrega 4.}
+H02, la dispersion de la politica de roles. La Entrega 4 exige defender decisiones de diseno
+y, con alta probabilidad, ampliar el modelo de permisos. Hoy esa ampliacion no se resuelve
+en un punto sino en cuatro metodos de la misma clase, y el sistema no dispone de ninguna
+prueba que verifique la matriz completa de rol por operacion. H01 es estructuralmente mas
+grave, pero su costo se paga en testabilidad; H02 se paga en correccion, que es peor.
+
+\paragraph{2. Que patron introduciria que hoy no esta.}
+Un \emph{Circuit Breaker} sobre la llamada de validacion de token, acompanado de la puerta
+de enlace de H05. El problema concreto que resuelve es el descrito en H09: hoy la
+indisponibilidad de \texttt{auth-service} degrada linealmente todo el servicio de tickets al
+retener hilos. Una solucion mas simple --- fijar unicamente un tiempo de espera --- no basta,
+porque acota la espera de cada peticion individual pero no impide que mil peticiones
+consecutivas sigan intentando contactar un servicio que ya se sabe caido; el disyuntor corta
+el intento tras un umbral de fallos y permite responder de inmediato con una degradacion
+controlada. La alternativa aun mas simple --- validar el JWT localmente en cada servicio ---
+fue explicitamente descartada por el equipo autor en el comentario de
+\texttt{AuthGatewayFilter} (lineas 22--28) para que el secreto de firma no salga de
+\texttt{auth-service}, y ese razonamiento es correcto y debe conservarse.
+
+\paragraph{3. Que ocurre si un servicio deja de responder treinta segundos.}
+Rastreando el camino en el codigo actual: el navegador invoca
+\texttt{POST http://localhost:8002/api/v1/tickets} (\texttt{frontend/app.js}, linea 5); la
+peticion entra en \texttt{AuthGatewayFilter.doFilterInternal} (linea 51); el filtro halla la
+cabecera \texttt{Authorization} y ejecuta la llamada sincrona de la linea 60 contra
+\texttt{auth-service}. Ese es el punto de fallo. Como el cliente se construyo con
+\texttt{RestClient.create()} sin tiempo de espera, el hilo del contenedor permanece
+bloqueado los treinta segundos. Si la caida es limpia --- conexion rechazada --- se lanza
+\texttt{RestClientException}, se captura en la linea 76 y el usuario recibe un 401 con el
+texto \emph{Token invalido o auth-service no disponible}, es decir, se le indica que su
+sesion es invalida cuando en realidad su sesion es correcta. Si la caida no es limpia sino
+lenta, no hay excepcion y el usuario espera indefinidamente mientras cada peticion nueva
+consume otro hilo. En ningun caso se alcanza \texttt{TicketService}, de modo que la creacion
+del ticket no ocurre ni siquiera de forma diferida.
+
+\paragraph{4. Es posible reconstruir la traza completa de una operacion.}
+No. Una creacion de ticket atraviesa frontend, \texttt{svc-principal},
+\texttt{auth-service}, Kafka, \texttt{ai-service}, \texttt{report-service} y
+\texttt{notification-service}. Los registros reales que produce ese recorrido son de la
+forma:
+
+\begin{lstlisting}[numbers=none,caption={Salida representativa de tres servicios ante una misma operacion}]
+[svc-principal] INFO  Conflicto de escritura serializable para 7f3a... , reintentando una vez
+[report-service] INFO Evento adelantado a ticket.created para 7f3a... -- se crea una fila provisional
+[notification-service] notification-service escuchando: ticket.created, ...
+\end{lstlisting}
+
+El unico nexo disponible es el identificador del ticket, y solo aparece en dos de las tres
+lineas; la de Node no lo incluye. Reconstruir la traza exigiria correlacionar manualmente
+por marca de tiempo, que es justamente lo que el identificador de correlacion existe para
+evitar. Ademas, la fase previa a la creacion --- la validacion del token --- no deja ningun
+registro, porque \texttt{AuthService} no tiene registrador.
+
+\paragraph{5. Que aprendimos y aplicaremos en nuestro propio PFC.}
+Dos cosas concretas. La primera es el tratamiento de eventos fuera de orden mediante
+\emph{upsert} en el lado de lectura: nuestro sistema de laboratorios asume orden entre
+topicos distintos, supuesto que el codigo de ACC demuestra falso en ejecucion real y que
+resolvieron sin recurrir a ordenamiento global. La segunda es la practica de registrar en un
+ADR las decisiones de fragmentacion y consistencia (ADR-0003 y ADR-0004) y referenciarlas
+desde el comentario de la clase afectada; hace que el codigo explique por que es como es, y
+es lo que nos permitio auditar sus decisiones sin preguntarles nada.
+
+% ==================== 7. CONCLUSIONES =======================================
+\section{Conclusiones y recomendacion priorizada}
+
+El sistema revisado es un proyecto distribuido serio: la separacion de datos por servicio es
+correcta, el modelo de lectura CQRS esta bien construido, la politica de reintentos cumple
+los tres requisitos de idempotencia y acotamiento, y las decisiones no obvias estan
+documentadas en ADR. Los defectos encontrados no son de comprension de la arquitectura, sino
+de endurecimiento: se concentran en lo que ocurre cuando algo falla y en lo que el sistema
+deja registrado.
+
+Se recomienda atacar los hallazgos en este orden, por relacion entre riesgo y esfuerzo.
+
+\begin{enumerate}[leftmargin=*]
+\item \textbf{H09} (Critica). Fijar tiempos de espera de conexion y lectura, y diferenciar
+token invalido de servicio no disponible. Es la correccion de menor costo y mayor efecto:
+elimina un modo de fallo que alcanza a todo el servicio de tickets.
+\item \textbf{H07} y \textbf{H10} (seguridad). Suprimir los valores por defecto sensibles y
+dejar de propagar el mensaje interno de la excepcion. Ambas son ediciones puntuales.
+\item \textbf{H12} y \textbf{H11} (observabilidad). Sanitizar los payloads registrados,
+introducir el identificador de correlacion en el borde y anadir auditoria de autenticacion.
+Sin esto, el diagnostico de los propios hallazgos anteriores no es verificable.
+\item \textbf{H01} y \textbf{H02} (diseno). Extraer la publicacion de eventos y centralizar
+la matriz de roles antes de ampliar el modelo de permisos en la Entrega 4.
+\item \textbf{H05}, \textbf{H03}, \textbf{H04}, \textbf{H06}, \textbf{H08}. Mejoras
+estructurales de mayor alcance, adecuadas para planificarse como deuda tecnica explicita.
+\end{enumerate}
