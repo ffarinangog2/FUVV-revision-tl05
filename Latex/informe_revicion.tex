@@ -665,3 +665,111 @@ la matriz de roles antes de ampliar el modelo de permisos en la Entrega 4.
 \item \textbf{H05}, \textbf{H03}, \textbf{H04}, \textbf{H06}, \textbf{H08}. Mejoras
 estructurales de mayor alcance, adecuadas para planificarse como deuda tecnica explicita.
 \end{enumerate}
+
+% ==================== 7. CONCLUSIONES =======================================
+\section{Conclusiones y recomendacion priorizada}
+
+El sistema revisado es un proyecto distribuido serio: la separacion de datos por servicio es
+correcta, el modelo de lectura CQRS esta bien construido, la politica de reintentos cumple
+los tres requisitos de idempotencia y acotamiento, y las decisiones no obvias estan
+documentadas en ADR. Los defectos encontrados no son de comprension de la arquitectura, sino
+de endurecimiento: se concentran en lo que ocurre cuando algo falla y en lo que el sistema
+deja registrado.
+
+Se recomienda atacar los hallazgos en este orden, por relacion entre riesgo y esfuerzo.
+
+\begin{enumerate}[leftmargin=*]
+\item \textbf{H09} (Critica). Fijar tiempos de espera de conexion y lectura, y diferenciar
+token invalido de servicio no disponible. Es la correccion de menor costo y mayor efecto:
+elimina un modo de fallo que alcanza a todo el servicio de tickets.
+\item \textbf{H07} y \textbf{H10} (seguridad). Suprimir los valores por defecto sensibles y
+dejar de propagar el mensaje interno de la excepcion. Ambas son ediciones puntuales.
+\item \textbf{H12} y \textbf{H11} (observabilidad). Sanitizar los payloads registrados,
+introducir el identificador de correlacion en el borde y anadir auditoria de autenticacion.
+Sin esto, el diagnostico de los propios hallazgos anteriores no es verificable.
+\item \textbf{H01} y \textbf{H02} (diseno). Extraer la publicacion de eventos y centralizar
+la matriz de roles antes de ampliar el modelo de permisos en la Entrega 4.
+\item \textbf{H05}, \textbf{H03}, \textbf{H04}, \textbf{H06}, \textbf{H08}. Mejoras
+estructurales de mayor alcance, adecuadas para planificarse como deuda tecnica explicita.
+\end{enumerate}
+
+\section*{Declaracion de uso de inteligencia artificial generativa}
+\addcontentsline{toc}{section}{Declaracion de uso de inteligencia artificial generativa}
+
+El equipo revisor utilizo un asistente conversacional basado en modelos de lenguaje
+(Claude, de Anthropic) como apoyo en dos tareas concretas: la exploracion del arbol de
+fuentes del repositorio revisado para localizar los archivos y lineas pertinentes de cada
+item de la lista de verificacion, y la redaccion y revision de estilo de este documento
+LaTeX. Todos los fragmentos de codigo citados fueron extraidos del arbol de trabajo
+correspondiente al commit \texttt{\commitCorto} y verificados linea por linea contra el
+archivo original; el juicio tecnico de cada hallazgo, la asignacion de severidad y de
+atributo de calidad, y la priorizacion de la Seccion 7 son responsabilidad de los
+integrantes firmantes. Durante la revision se detectaron y descartaron dos afirmaciones
+generadas por la herramienta que no resistieron la verificacion: un SHA de commit
+inexistente en el repositorio y la atribucion de una linea de registro a una clase
+equivocada. No se utilizo inteligencia artificial para generar las referencias
+bibliograficas, que provienen del instrumento FORM-TL-05 y fueron cotejadas con su
+identificador digital.
+
+\begin{thebibliography}{11}
+
+\bibitem{bacchelli}
+A. Bacchelli y C. Bird, ``Expectations, Outcomes, and Challenges of Modern Code Review,''
+en \emph{Proc. 35th Int. Conf. Software Engineering (ICSE)}, San Francisco, CA, USA: IEEE,
+2013, pp. 712--721. doi: \href{https://doi.org/10.1109/ICSE.2013.6606617}{10.1109/ICSE.2013.6606617}.
+
+\bibitem{sadowski}
+C. Sadowski, E. Soderberg, L. Church, M. Sipko y A. Bacchelli, ``Modern Code Review: A Case
+Study at Google,'' en \emph{Proc. 40th Int. Conf. Software Engineering: Software Engineering
+in Practice (ICSE-SEIP)}, Gothenburg, Sweden: ACM, 2018, pp. 181--190.
+doi: \href{https://doi.org/10.1145/3183519.3183525}{10.1145/3183519.3183525}.
+
+\bibitem{martin}
+R. C. Martin, \emph{Clean Architecture: A Craftsman's Guide to Software Structure and
+Design}. Upper Saddle River, NJ, USA: Prentice Hall, 2017. ISBN: 978-0-13-449416-6.
+
+\bibitem{gamma}
+E. Gamma, R. Helm, R. Johnson y J. Vlissides, \emph{Design Patterns: Elements of Reusable
+Object-Oriented Software}. Reading, MA, USA: Addison-Wesley, 1994. ISBN: 978-0-201-63361-0.
+
+\bibitem{cerny}
+T. Cerny, A. S. Abdelfattah, A. A. Maruf, A. Janes y D. Taibi, ``Catalog and Detection
+Techniques of Microservice Anti-Patterns and Bad Smells: A Tertiary Study,'' \emph{Journal
+of Systems and Software}, vol. 206, p. 111829, 2023.
+doi: \href{https://doi.org/10.1016/j.jss.2023.111829}{10.1016/j.jss.2023.111829}.
+
+\bibitem{tighilt}
+R. Tighilt, M. Abdellatif, I. Trabelsi, L. Madern, N. Moha e Y.-G. Gueheneuc, ``On the
+Maintenance Support for Microservice-Based Systems through the Specification and the
+Detection of Microservice Antipatterns,'' \emph{Journal of Systems and Software}, vol. 204,
+p. 111755, 2023.
+doi: \href{https://doi.org/10.1016/j.jss.2023.111755}{10.1016/j.jss.2023.111755}.
+
+\bibitem{richardson}
+C. Richardson, \emph{Microservices Patterns: With Examples in Java}. Shelter Island, NY,
+USA: Manning Publications, 2018. ISBN: 978-1-6172-9454-9.
+
+\bibitem{newman}
+S. Newman, \emph{Building Microservices: Designing Fine-Grained Systems}, 2.\textsuperscript{a}
+ed. Sebastopol, CA, USA: O'Reilly Media, 2021. ISBN: 978-1-4920-3402-5.
+
+\bibitem{taibi}
+D. Taibi y V. Lenarduzzi, ``On the Definition of Microservice Bad Smells,'' \emph{IEEE
+Software}, vol. 35, n.\textsuperscript{o} 3, pp. 56--62, 2018.
+doi: \href{https://doi.org/10.1109/MS.2018.2141031}{10.1109/MS.2018.2141031}.
+
+\bibitem{mohottige}
+T. I. Mohottige, A. Polyvyanyy, C. Fidge, R. Buyya y A. Barros, ``Reengineering Software
+Systems into Microservices: State-of-the-Art and Future Directions,'' \emph{Information and
+Software Technology}, vol. 183, p. 107732, 2025.
+doi: \href{https://doi.org/10.1016/j.infsof.2025.107732}{10.1016/j.infsof.2025.107732}.
+
+\bibitem{iso25010}
+International Organization for Standardization, \emph{ISO/IEC 25010:2023 Systems and
+Software Engineering --- Systems and Software Quality Requirements and Evaluation (SQuaRE)
+--- Product Quality Model}. Geneva, Switzerland: ISO, 2023.
+
+\end{thebibliography}
+
+\end{document}
+
